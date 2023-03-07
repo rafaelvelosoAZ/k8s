@@ -8,10 +8,10 @@ ip_vs_sh
 ip_vs_wrr
 nf_conntrack_ipv4
 overlay
-EOF &> /dev/null
+EOF
 
 sudo cat << EOF > /etc/sysctl.d/k8s.conf
 net.bridge.bridge-nf-call-ip6tables = 1
 net.bridge.bridge-nf-call-iptables = 1
 net.ipv4.ip_forward = 1
-EOF &> /dev/null
+EOF
