@@ -1,3 +1,3 @@
 #!/usr/bin/env bash
 
-sudo apt-get update && apt-get upgrade -y
+sudo apt-get update &> /dev/null && apt-get upgrade -y &> /dev/null
