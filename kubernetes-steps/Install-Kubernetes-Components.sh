@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
 
 sudo apt-get update &> /dev/null
-sudo apt-get install -y &> /dev/null
 sudo apt-get install -y apt-transport-https &> /dev/null
 sudo apt-get install -y gnupg2 &> /dev/null
 
