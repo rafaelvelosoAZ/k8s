@@ -1,0 +1,78 @@
+---
+- name: add k8s apt key
+  apt_key:
+    url:  https://packages.cloud.google.com/apt/doc/apt-key.gpg
+    state: present
+
+- name: Add k8s repository
+  apt_repository:
+    repo: deb https://apt.kubernetes.io/ kubernetes-xenial main
+    state: present
+    update_cache: yes
+    
+- name: Install k8s packages
+  apt:
+    name: "{{ item }}"
+  loop: "{{ k8s_packages }}"
+
+- name: Creating a configuration file for containerd, our container runtime
+  file:
+      path: "/etc/modules-load.d/containerd.conf"
+      state: "touch"
+
+- name: setting up pre-requisites for containerd
+  blockinfile:
+    path: "/etc/modules-load.d/containerd.conf"
+    block: |
+          overlay
+          br_netfilter
+
+- name: loading required modules
+  shell: |
+          sudo modprobe overlay
+          sudo modprobe br_netfilter
+
+- name: configuring network settings for Kube 
+  file:
+    path: "/etc/sysctl.d/99-kubernetes-cri.conf"
+    state: "touch"
+
+- name: adding required settings for containerd
+  blockinfile:
+    path: "/etc/sysctl.d/99-kubernetes-cri.conf"
+    block: |
+           net.bridge.bridge-nf-call-iptables = 1
+           net.ipv4.ip_forward = 1
+           net.bridge.bridge-nf-call-ip6tables = 1
+
+- name: make settings applicable without restart
+  command: sudo sysctl --system
+
+- name: installing containerd and settings its config. restart as well.
+  shell: |
+          sudo apt-get install -y containerd
+          sudo mkdir -p /etc/containerd
+          sudo containerd config default > /etc/containerd/config.toml
+          sudo systemctl restart containerd
+
+- name: Create a kube repo file
+  file:
+    path: "/etc/yum.repos.d/kubernetes.repo"
+    state: "touch"
+
+- name: write repo information in kube repo file
+  blockinfile:
+    path: "/etc/yum.repos.d/kubernetes.repo"
+    block: |
+           [kubernetes]
+           name=Kubernetes
+           baseurl=https://packages.cloud.google.com/yum/repos/kubernetes-el7-x86_64
+           enabled=1
+           gpgcheck=1
+           repo_gpgcheck=1
+           gpgkey=https://packages.cloud.google.com/yum/doc/yum-key.gpg https://packages.cloud.google.com/yum/doc/rpm-package-key.gpg
+
+- name: disabling swap as its required for kubelet
+  shell: |
+          sudo swapoff -a
+          sudo sed -i '/ swap / s/^\(.*\)$/#\1/g' /etc/fstab

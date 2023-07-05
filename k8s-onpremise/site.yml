@@ -1,0 +1,28 @@
+- name: Install k8s
+  become: yes
+  # become_user: root
+  # become_method: sudo
+  hosts: all
+  gather_facts: yes
+  roles:
+    - k8s-all
+  vars:
+    ansible_ssh_common_args: '-o StrictHostKeyChecking=no'
+
+
+- name: Setup master node
+  become: yes
+  hosts: _control_plane
+  roles:
+    - k8s-masters
+  vars:
+    ansible_ssh_common_args: '-o StrictHostKeyChecking=no'
+
+
+- name: Setup worker node
+  become: yes
+  hosts: _worker
+  roles:
+    - k8s-workers
+  vars:
+    ansible_ssh_common_args: '-o StrictHostKeyChecking=no'
