@@ -25,39 +25,12 @@ resource "azurerm_virtual_network" "vnet-hub" {
   }
 }
 
- resource "azurerm_subnet" "snet-fw" {
+resource "azurerm_subnet" "snet-fw" {
   name                 = "AzureFirewallSubnet"
   resource_group_name  = azurerm_resource_group.rg-hub.name
   virtual_network_name = azurerm_virtual_network.vnet-hub.name
   address_prefixes     = ["10.0.0.128/26"]
 }
-
-/* resource "azurerm_subnet" "snet-appgw-fw" {
-  name                 = "snet-appgw"
-  resource_group_name  = azurerm_resource_group.rg-hub.name
-  virtual_network_name = azurerm_virtual_network.vnet-hub.name
-  address_prefixes     = ["10.0.0.0/25"]
-}
-
-resource "azurerm_route_table" "snet-appgw-fw" {
-  name                          = "rt-sh"
-  location                      = azurerm_resource_group.rg-shared.location
-  resource_group_name           = azurerm_resource_group.rg-shared.name
-  disable_bgp_route_propagation = false
-
-  route {
-    name                   = "rf-fw"
-    address_prefix         = "192.0.1.0/24"
-    next_hop_type          = "VirtualAppliance"
-    next_hop_in_ip_address = azurerm_firewall.example.ip_configuration[0].private_ip_address
-  }
-
-}
-
-resource "azurerm_subnet_route_table_association" "snet-appgw-fw" {
-  subnet_id      = azurerm_subnet.snet-appgw.id
-  route_table_id = azurerm_route_table.snet-appgw-fw.id
-} */
 
 ##vnet shared zones
 resource "azurerm_virtual_network" "vnet-shared" {
@@ -104,7 +77,7 @@ resource "azurerm_virtual_network" "vnet-spoke" {
   location            = azurerm_resource_group.rg-spoke.location
   resource_group_name = azurerm_resource_group.rg-spoke.name
   address_space       = ["192.0.0.0/16"]
-  dns_servers         = ["10.0.0.4", "8.8.8.8"]
+  dns_servers         = [azurerm_firewall.example.ip_configuration[0].private_ip_address, "8.8.8.8"]
   tags = {
     environment = "aks"
   }
@@ -167,6 +140,7 @@ resource "azurerm_virtual_network_gateway" "example" {
     vpn_client_protocols = ["OpenVPN"]
 
   }
+  depends_on = [azurerm_subnet.gateway, azurerm_public_ip.vpn]
 }
 
 ##Appgw
@@ -178,7 +152,7 @@ locals {
   listener_name                  = "${azurerm_virtual_network.vnet-spoke.name}-httplstn"
   request_routing_rule_name      = "${azurerm_virtual_network.vnet-spoke.name}-rqrt"
 
-##AppgwFW
+  ##AppgwFW
   /* backend_address_pool_name_fw      = "${azurerm_virtual_network.vnet-hub.name}-beap"
   frontend_port_name_fw             = "${azurerm_virtual_network.vnet-hub.name}-feport"
   frontend_ip_configuration_name_fw = "${azurerm_virtual_network.vnet-hub.name}-feip"
@@ -258,7 +232,7 @@ resource "azurerm_application_gateway" "network" {
     priority                   = 1
   }
 
-  depends_on = [azurerm_virtual_network.vnet-spoke, azurerm_public_ip.test]
+  depends_on = [azurerm_virtual_network.vnet-spoke, azurerm_public_ip.test, azurerm_subnet.snet-appgw]
 }
 
 ## Route table AKS
@@ -283,6 +257,8 @@ resource "azurerm_route_table" "example" {
 resource "azurerm_subnet_route_table_association" "example" {
   subnet_id      = azurerm_subnet.snet-aks.id
   route_table_id = azurerm_route_table.example.id
+
+  depends_on = [azurerm_route_table.example, azurerm_subnet.snet-aks]
 }
 
 ##vnet peering
@@ -357,81 +333,6 @@ resource "azurerm_firewall_network_rule_collection" "example" {
   priority            = 100
   action              = "Allow"
 
-  /* rule {
-    name = "teste1"
-
-    source_addresses = [
-      "*",
-    ]
-
-    destination_ports = [
-      "*"
-    ]
-
-    destination_addresses = [
-      "*"
-    ]
-
-    protocols = [
-      "Any",
-    ]
-  }
-  rule {
-    name = "apiudp"
-
-    source_addresses = [
-      "*",
-    ]
-
-    destination_ports = [
-      "1194"
-    ]
-
-    destination_addresses = [
-      "AzureCloud.eastus"
-    ]
-
-    protocols = [
-      "UDP",
-    ]
-  }
-  rule {
-    name = "apitcp"
-
-    source_addresses = [
-      "*",
-    ]
-
-    destination_ports = [
-      "9000"
-    ]
-
-    destination_addresses = [
-      "AzureCloud.eastus"
-    ]
-
-    protocols = [
-      "TCP"
-    ]
-  }
-  rule {
-    name = "time"
-
-    source_addresses = [
-      "*",
-    ]
-
-    destination_ports = [
-      "123"
-    ]
-
-    destination_fqdns = ["ntp.ubuntu.com"]
-
-    protocols = [
-      "UDP"
-    ]
-  } */
-
   #### novas rules
   rule {
     name                  = "Time"
@@ -476,28 +377,6 @@ resource "azurerm_firewall_application_rule_collection" "example" {
   resource_group_name = azurerm_resource_group.rg-hub.name
   priority            = 100
   action              = "Allow"
-
-  /* rule {
-    name = "rule2"
-
-    source_addresses = [
-      "*",
-    ]
-
-    target_fqdns = [
-      "AzureKubernetesService",
-    ]
-
-    protocol {
-      port = "443"
-      type = "Https"
-    }
-
-    protocol {
-      port = "80"
-      type = "Http"
-    }
-  } */
 
   ### novas rules
   rule {
@@ -666,12 +545,6 @@ resource "azurerm_role_assignment" "example" {
   principal_id         = azurerm_user_assigned_identity.example.principal_id
 }
 
-/* resource "azurerm_role_assignment" "example4" {
-  scope                = azurerm_application_gateway.network.id
-  role_definition_name = "Contributor"
-  principal_id         = azurerm_user_assigned_identity.example.principal_id
-  depends_on           = [azurerm_application_gateway.network]
-} */
 
 resource "azurerm_role_assignment" "example2" {
   scope                = azurerm_resource_group.rg-spoke.id
@@ -709,11 +582,41 @@ resource "azurerm_kubernetes_cluster" "example" {
   }
 
   depends_on = [
-    azurerm_role_assignment.example, azurerm_role_assignment.example2, azurerm_firewall_network_rule_collection.example, azurerm_firewall_application_rule_collection.example
+    azurerm_role_assignment.example, azurerm_role_assignment.example2, azurerm_firewall_network_rule_collection.example, azurerm_firewall_application_rule_collection.example, azurerm_subnet.snet-aks, azurerm_subnet_route_table_association.example
   ]
 
 }
 
+resource "azurerm_kubernetes_cluster_node_pool" "example" {
+  name                  = "internal"
+  kubernetes_cluster_id = azurerm_kubernetes_cluster.example.id
+  vm_size               = "Standard_DS2_v2"
+  node_count            = 1
+
+  tags = {
+    Environment = "Production"
+  }
+
+  depends_on = [
+    azurerm_kubernetes_cluster.example ,azurerm_role_assignment.example, azurerm_role_assignment.example2, azurerm_firewall_network_rule_collection.example, azurerm_firewall_application_rule_collection.example, azurerm_subnet.snet-aks, azurerm_subnet_route_table_association.example
+  ]
+}
+
+## Acr
+resource "azurerm_container_registry" "example" {
+  name                = "acrrveloso"
+  resource_group_name = azurerm_resource_group.rg-spoke.name
+  location            = azurerm_resource_group.rg-spoke.location
+  sku                 = "Standard"
+
+}
+
+resource "azurerm_role_assignment" "example1" {
+  principal_id                     = azurerm_kubernetes_cluster.example.kubelet_identity[0].object_id
+  role_definition_name             = "AcrPull"
+  scope                            = azurerm_container_registry.example.id
+  skip_service_principal_aad_check = true
+}
 
 ##Appgw FW
 
